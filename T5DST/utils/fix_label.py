@@ -32,7 +32,7 @@ def fix_general_label_error(labels, slots):
     for slot in slots:
         if slot in label_dict.keys():
             # general typos
-            if label_dict[slot] in GENERAL_TYPO.keys():
+            if label_dict[slot] in GENERAL_TYPO:
                 label_dict[slot] = label_dict[slot].replace(label_dict[slot], GENERAL_TYPO[label_dict[slot]])
 
             # miss match slot and value

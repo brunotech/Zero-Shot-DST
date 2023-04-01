@@ -24,9 +24,7 @@ class DSTDataset(Dataset):
 
     def __getitem__(self, index):
         """Returns one data pair (source and target)."""
-        item_info = self.data[index]
-
-        return item_info
+        return self.data[index]
 
     def __len__(self):
         return len(self.data)
@@ -35,7 +33,7 @@ class DSTDataset(Dataset):
 
 def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
     choice_token = " <extra_id_0> "
-    print(("Reading all files from {}".format(path_name)))
+    print(f"Reading all files from {path_name}")
     data = []
 
     domain_counter = {}
@@ -79,42 +77,52 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
 
                 # Generate domain-dependent slot list
                 slot_temp = SLOTS
-                if dataset == "train" or dataset == "dev":
-                    if args["except_domain"] != "none":
-                        slot_temp = [k for k in SLOTS if args["except_domain"] not in k]
-                        slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["except_domain"] not in k])
-                    elif args["only_domain"] != "none":
-                        slot_temp = [k for k in SLOTS if args["only_domain"] in k]
-                        slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["only_domain"] in k])
-                else:
-                    if args["except_domain"] != "none":
-                        slot_temp = [k for k in SLOTS if args["except_domain"] in k]
-                        slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["except_domain"] in k])
-                    elif args["only_domain"] != "none":
-                        slot_temp = [k for k in SLOTS if args["only_domain"] in k]
-                        slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["only_domain"] in k])
-                turn_belief_list = []
-                for k,v in slot_values.items():
-                    if v!="none":
-                        turn_belief_list.append(str(k)+'-'+str(v))
+                if (
+                    dataset in ["train", "dev"]
+                    and args["except_domain"] != "none"
+                ):
+                    slot_temp = [k for k in SLOTS if args["except_domain"] not in k]
+                    slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["except_domain"] not in k])
+                elif (
+                    dataset in ["train", "dev"]
+                    and args["only_domain"] != "none"
+                    or dataset not in ["train", "dev"]
+                    and args["except_domain"] == "none"
+                    and args["only_domain"] != "none"
+                ):
+                    slot_temp = [k for k in SLOTS if args["only_domain"] in k]
+                    slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["only_domain"] in k])
+                elif (
+                    dataset not in ["train", "dev"]
+                    and args["except_domain"] != "none"
+                ):
+                    slot_temp = [k for k in SLOTS if args["except_domain"] in k]
+                    slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["except_domain"] in k])
+                turn_belief_list = [
+                    f'{str(k)}-{str(v)}'
+                    for k, v in slot_values.items()
+                    if v != "none"
+                ]
                 # turn_belief_list = [str(k)+'-'+str(v) for k,v in slot_values.items()]
 
                 for slot in slot_temp:
                     # skip unrelevant slots for out of domain setting
-                    if args["except_domain"] != "none" and dataset !="test":
-                        if slot.split("-")[0] not in dial_dict["domains"]:
-                            continue
+                    if (
+                        args["except_domain"] != "none"
+                        and dataset != "test"
+                        and slot.split("-")[0] not in dial_dict["domains"]
+                    ):
+                        continue
 
                     slot_lang = description[slot]["question"]
                     slot_text = slot
                     value_text = slot_values.get(slot, 'none').strip()
-                    if args["gold_slots"]:
-                        if value_text=="none":
-                            continue
+                    if args["gold_slots"] and value_text == "none":
+                        continue
 
 
                     input_text = f"extractive question: {slot_lang} context: {dialog_history}".lower()
-                    output_text = value_text + f" {tokenizer.eos_token}"
+                    output_text = f"{value_text} {tokenizer.eos_token}"
                     data_detail = {
                         "ID":dial_dict["dial_id"],
                         "domains":dial_dict["domains"],
@@ -132,7 +140,7 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                     if len(description[slot]["values"])>0 and value_text!="none":
                         choices = (choice_token + choice_token.join(description[slot]["values"])).lower()
                         input_text = f"multi-choice question: {slot_lang} choices: {choices} context: {dialog_history}".lower()
-                        output_text = (value_text + f" {tokenizer.eos_token}").lower()
+                        output_text = f"{value_text} {tokenizer.eos_token}".lower()
                         data_detail = {
                             "ID":dial_dict["dial_id"],
                             "domains":dial_dict["domains"],
@@ -156,16 +164,14 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
 
 def get_slot_information(ontology):
     ontology_domains = dict([(k, v) for k, v in ontology.items() if k.split("-")[0] in EXPERIMENT_DOMAINS])
-    SLOTS = [k.replace(" ","").lower() if ("book" not in k) else k.lower() for k in ontology_domains.keys()]
-
-    return SLOTS
+    return [
+        k.replace(" ", "").lower() if ("book" not in k) else k.lower()
+        for k in ontology_domains
+    ]
 
 
 def collate_fn(data, tokenizer):
-    batch_data = {}
-    for key in data[0]:
-        batch_data[key] = [d[key] for d in data]
-
+    batch_data = {key: [d[key] for d in data] for key in data[0]}
     input_batch = tokenizer(batch_data["intput_text"], padding=True, return_tensors="pt", add_special_tokens=False, verbose=False, truncation=True, max_length=1000)
     batch_data["encoder_input"] = input_batch["input_ids"]
     batch_data["attention_mask"] = input_batch["attention_mask"]
@@ -178,7 +184,7 @@ def collate_fn(data, tokenizer):
 
 
 def normalize_ontology(ontology):
-    keys = [k for k in ontology]
+    keys = list(ontology)
     for k in keys:
         for i in range(len(ontology[k])):
             ontology[k][i] = ontology[k][i].replace("do n't care", "dontcare")
@@ -224,7 +230,7 @@ def prepare_data(args, tokenizer):
 
 def read_QA_data(args, path_name, tokenizer):
     choice_token = " <extra_id_0> "
-    print(("Reading all files from {}".format(path_name)))
+    print(f"Reading all files from {path_name}")
     data = []
     # read files
     with open(path_name) as f:
@@ -254,21 +260,14 @@ def read_QA_data(args, path_name, tokenizer):
                 if len(qa["choice"])>0:
                     choices = (choice_token + choice_token.join(qa["choice"])).lower()
                     input_text = f"multi-choice question: {question} choices: {choices} context: {context}".lower()
-                    output_text = (qa["answer"] + f" {tokenizer.eos_token}").lower()
-                    data_detail = {
-                        "intput_text":input_text,
-                        "output_text":output_text,
-                        }
-                    data.append(data_detail)
-
                 else:
                     input_text = f"extractive question: {question} context: {context}".lower()
-                    output_text = (qa["answer"] + f" {tokenizer.eos_token}").lower()
-                    data_detail = {
-                        "intput_text":input_text,
-                        "output_text":output_text,
-                        }
-                    data.append(data_detail)
+                output_text = (qa["answer"] + f" {tokenizer.eos_token}").lower()
+                data_detail = {
+                    "intput_text":input_text,
+                    "output_text":output_text,
+                    }
+                data.append(data_detail)
 
                 if random.random()<args["neg_num"]:
                 # for i in range(args["neg_num"]):
@@ -293,7 +292,7 @@ def read_QA_data(args, path_name, tokenizer):
                         # print(input_text)
                         # print(qa["answer"])
 
-                    output_text = "none" + f" {tokenizer.eos_token}"
+                    output_text = f"none {tokenizer.eos_token}"
                     data_detail = {
                     "intput_text":input_text,
                     "output_text":output_text,
@@ -391,7 +390,7 @@ def adjust_sgd_questions(schema):
 def fix_number(text):
     number_mapper = {"one": "1", "two": "2", "three":"3", "four":"4", "five":"5", "six":"6", "seven":"7", "eight":"8", "nine":"9", "ten":"10", "eleven":"11", "twelve":"12"}
     for fromx, tox in number_mapper.items():
-        text = ' ' + text + ' '
+        text = f' {text} '
         text = text.replace(f" {fromx} ", f" {tox} ")[1:-1]
     return text
 
@@ -417,11 +416,8 @@ def read_SGD(args, path_name, tokenizer, dataset="test"):
             # collect required_slots and optional_slots
             slot_collection = []
             for intent in service["intents"]:
-                for slot in intent["required_slots"]:
-                    slot_collection.append(slot)
-                for slot in intent["optional_slots"].keys():
-                    slot_collection.append(slot)
-
+                slot_collection.extend(iter(intent["required_slots"]))
+                slot_collection.extend(iter(intent["optional_slots"].keys()))
             for slot in service["slots"]:
                 description = slot["description"].lower()
                 if any(c_l in description for c_l in check_list):
@@ -449,7 +445,7 @@ def read_SGD(args, path_name, tokenizer, dataset="test"):
                 assert idx%2==0
                 # accumulate dialogue utterances
                 #dialog_history +=  (" System: " + turn["system"] + " User: " + turn["user"])
-                dialog_history +=  (" User: " + utterance)
+                dialog_history += f" User: {utterance}"
 
 
                 for fid, frame in enumerate(turn["frames"]):
@@ -496,10 +492,9 @@ def read_SGD(args, path_name, tokenizer, dataset="test"):
                             p_data.append(data_detail)
 
 
-            # system turn
             else:
                 assert idx%2==1
-                dialog_history +=  (" Speaker: " + utterance)
+                dialog_history += f" Speaker: {utterance}"
 
 
     # with open(os.path.join("test",f"output.json"), 'w') as fout:

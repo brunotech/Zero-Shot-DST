@@ -29,5 +29,4 @@ def get_args():
     parser.add_argument("--semi", action='store_true')
     parser.add_argument("--mode", type=str, default="train")
 
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()

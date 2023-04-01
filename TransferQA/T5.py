@@ -52,11 +52,12 @@ class DST_Seq2Seq(pl.LightningModule):
         # return result
 
     def validation_epoch_end(self, outputs):
-        val_loss_mean = sum([o['val_loss'] for o in outputs]) / len(outputs)
-        # show val_loss in progress bar but only log val_loss
-        results = {'progress_bar': {'val_loss': val_loss_mean.item()}, 'log': {'val_loss': val_loss_mean.item()},
-                   'val_loss': val_loss_mean.item()}
-        return results
+        val_loss_mean = sum(o['val_loss'] for o in outputs) / len(outputs)
+        return {
+            'progress_bar': {'val_loss': val_loss_mean.item()},
+            'log': {'val_loss': val_loss_mean.item()},
+            'val_loss': val_loss_mean.item(),
+        }
 
     def configure_optimizers(self):
         return AdamW(self.parameters(), lr=self.lr, correct_bias=True)
@@ -146,16 +147,11 @@ def evaluate_model(args, tokenizer, model, test_loader, save_path, ALL_SLOTS, pr
         for idx, value in enumerate(value_batch):
             dial_id = batch["ID"][idx]
             if dial_id not in predictions:
-                predictions[dial_id] = {}
-                predictions[dial_id]["domain"] = batch["domains"][idx][0]
-                predictions[dial_id]["turns"] = {}
-
+                predictions[dial_id] = {"domain": batch["domains"][idx][0], "turns": {}}
             if batch["turn_id"][idx] not in predictions[dial_id]["turns"]:
                 predictions[dial_id]["turns"][batch["turn_id"][idx]] = {"turn_belief":batch["turn_belief"][idx], "pred_belief":[]}
 
-            # add the active slots into the collection
             if batch["question_type"][idx]=="extractive" and value!="none":
-
                 if args["canonicalization"]:
                     value = difflib.get_close_matches(value, ontology[batch["slot_text"][idx]], n=1)
                     if len(value)>0:
@@ -177,10 +173,7 @@ def evaluate_model(args, tokenizer, model, test_loader, save_path, ALL_SLOTS, pr
             if batch["question_type"][idx]=="multi-choice":
                 if args["canonicalization"]:
                     value = difflib.get_close_matches(value, ontology[batch["slot_text"][idx]], n=1)
-                    if len(value)>0 and value!="":
-                        value = value[0]
-                    else:
-                        value="none"
+                    value = value[0] if len(value)>0 and value!="" else "none"
                 multi_choices_collection.append({"dial_id":batch["ID"][idx], "turn_id":batch["turn_id"][idx], "slot_text":batch["slot_text"][idx], "value":value})
             # ["day","type","area","pricerange",'internet',"parking"]
             # analyze slot acc:

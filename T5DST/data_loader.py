@@ -38,7 +38,7 @@ class DSTDataset(Dataset):
 
 def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
     slot_lang_list = ["description_human", "rule_description", "value_description", "rule2", "rule3"]
-    print(("Reading all files from {}".format(path_name)))
+    print(f"Reading all files from {path_name}")
     data = []
     domain_counter = {}
     # read files
@@ -82,23 +82,28 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
 
                 # Generate domain-dependent slot list
                 slot_temp = SLOTS
-                if dataset == "train" or dataset == "dev":
-                    if args["except_domain"] != "none":
-                        slot_temp = [k for k in SLOTS if args["except_domain"] not in k]
-                        slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["except_domain"] not in k])
-                    elif args["only_domain"] != "none":
-                        slot_temp = [k for k in SLOTS if args["only_domain"] in k]
-                        slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["only_domain"] in k])
-                else:
-                    if args["except_domain"] != "none":
-                        slot_temp = [k for k in SLOTS if args["except_domain"] in k]
-                        slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["except_domain"] in k])
-                    elif args["only_domain"] != "none":
-                        slot_temp = [k for k in SLOTS if args["only_domain"] in k]
-                        slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["only_domain"] in k])
-
-
-                turn_belief_list = [str(k)+'-'+str(v) for k,v in slot_values.items()]
+                if (
+                    dataset in ["train", "dev"]
+                    and args["except_domain"] != "none"
+                ):
+                    slot_temp = [k for k in SLOTS if args["except_domain"] not in k]
+                    slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["except_domain"] not in k])
+                elif (
+                    dataset in ["train", "dev"]
+                    and args["only_domain"] != "none"
+                    or dataset not in ["train", "dev"]
+                    and args["except_domain"] == "none"
+                    and args["only_domain"] != "none"
+                ):
+                    slot_temp = [k for k in SLOTS if args["only_domain"] in k]
+                    slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["only_domain"] in k])
+                elif (
+                    dataset not in ["train", "dev"]
+                    and args["except_domain"] != "none"
+                ):
+                    slot_temp = [k for k in SLOTS if args["except_domain"] in k]
+                    slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["except_domain"] in k])
+                turn_belief_list = [f'{str(k)}-{str(v)}' for k,v in slot_values.items()]
 
                 # baseline gpt have different preprocessing, e.g., output: (slot1-value1, slot2-value2, slot3-value3, ...)
                 if "gpt" in args["model_name"]:
@@ -108,11 +113,21 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                         continue
                     for slot in slot_temp:
                         # skip unrelevant slots for out of domain setting
-                        if args["except_domain"] != "none" and dataset !="test":
-                            if slot.split("-")[0] not in dial_dict["domains"]:
-                                continue
-                        input_text = dialog_history + f" {tokenizer.sep_token} {slot}" + " " + tokenizer.bos_token
-                        output_text = input_text+ " " + turn["state"]["slot_values"].get(slot, 'none').strip() + " " + tokenizer.eos_token
+                        if (
+                            args["except_domain"] != "none"
+                            and dataset != "test"
+                            and slot.split("-")[0] not in dial_dict["domains"]
+                        ):
+                            continue
+                        input_text = f"{dialog_history} {tokenizer.sep_token} {slot} {tokenizer.bos_token}"
+                        output_text = (
+                            f"{input_text} "
+                            + turn["state"]["slot_values"]
+                            .get(slot, 'none')
+                            .strip()
+                            + " "
+                            + tokenizer.eos_token
+                        )
                         slot_text = slot
                         value_text = turn["state"]["slot_values"].get(slot, 'none').strip()
 
@@ -133,9 +148,12 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                     for slot in slot_temp:
 
                         # skip unrelevant slots for out of domain setting
-                        if args["except_domain"] != "none" and dataset !="test":
-                            if slot.split("-")[0] not in dial_dict["domains"]:
-                                continue
+                        if (
+                            args["except_domain"] != "none"
+                            and dataset != "test"
+                            and slot.split("-")[0] not in dial_dict["domains"]
+                        ):
+                            continue
 
                         output_text = slot_values.get(slot, 'none').strip() + f" {tokenizer.eos_token}"
                         slot_text = slot
@@ -143,21 +161,21 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
 
                         if args["slot_lang"]=="human":
                             slot_lang = description[slot]["description_human"]
-                            input_text = dialog_history + f" {tokenizer.sep_token} {slot_lang}?"
+                            input_text = f"{dialog_history} {tokenizer.sep_token} {slot_lang}?"
                         elif args["slot_lang"]=="naive":
                             slot_lang = description[slot]["naive"]
-                            input_text = dialog_history + f" {tokenizer.sep_token} {slot_lang}?"
+                            input_text = f"{dialog_history} {tokenizer.sep_token} {slot_lang}?"
                         elif args["slot_lang"]=="value":
                             slot_lang = description[slot]["naive"]
-                            input_text = dialog_history + f" {tokenizer.sep_token} {slot_lang}"
+                            input_text = f"{dialog_history} {tokenizer.sep_token} {slot_lang}"
                         elif args["slot_lang"]=="question":
                             slot_lang = description[slot]["question"]
-                            input_text = dialog_history + f" {tokenizer.sep_token} {slot_lang}"
+                            input_text = f"{dialog_history} {tokenizer.sep_token} {slot_lang}"
                         elif args["slot_lang"]=="slottype":
                             slot_lang = description[slot]["slottype"]
-                            input_text = dialog_history + f" {tokenizer.sep_token} {slot_lang}?"
+                            input_text = f"{dialog_history} {tokenizer.sep_token} {slot_lang}?"
                         else:
-                            input_text = dialog_history + f" {tokenizer.sep_token} {slot}"
+                            input_text = f"{dialog_history} {tokenizer.sep_token} {slot}"
 
                         data_detail = {
                             "ID":dial_dict["dial_id"],
@@ -182,26 +200,21 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
 
 def get_slot_information(ontology):
     ontology_domains = dict([(k, v) for k, v in ontology.items() if k.split("-")[0] in EXPERIMENT_DOMAINS])
-    SLOTS = [k.replace(" ","").lower() if ("book" not in k) else k.lower() for k in ontology_domains.keys()]
-
-    return SLOTS
+    return [
+        k.replace(" ", "").lower() if ("book" not in k) else k.lower()
+        for k in ontology_domains
+    ]
 
 
 def gpt_collate_fn(data,tokenizer):
-    batch_data = {}
-    for key in data[0]:
-        batch_data[key] = [d[key] for d in data]
-
+    batch_data = {key: [d[key] for d in data] for key in data[0]}
     output_batch = tokenizer(batch_data["output_text"], padding=True, return_tensors="pt", add_special_tokens=False, return_attention_mask=False, truncation=True, max_length=1000)
     batch_data["input_ids"] = output_batch['input_ids']
     return batch_data
 
 
 def collate_fn(data, tokenizer):
-    batch_data = {}
-    for key in data[0]:
-        batch_data[key] = [d[key] for d in data]
-
+    batch_data = {key: [d[key] for d in data] for key in data[0]}
     input_batch = tokenizer(batch_data["intput_text"], padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
     batch_data["encoder_input"] = input_batch["input_ids"]
     batch_data["attention_mask"] = input_batch["attention_mask"]

@@ -48,11 +48,12 @@ class DST_Seq2Seq(pl.LightningModule):
         # return result
 
     def validation_epoch_end(self, outputs):
-        val_loss_mean = sum([o['val_loss'] for o in outputs]) / len(outputs)
-        # show val_loss in progress bar but only log val_loss
-        results = {'progress_bar': {'val_loss': val_loss_mean.item()}, 'log': {'val_loss': val_loss_mean.item()},
-                   'val_loss': val_loss_mean.item()}
-        return results
+        val_loss_mean = sum(o['val_loss'] for o in outputs) / len(outputs)
+        return {
+            'progress_bar': {'val_loss': val_loss_mean.item()},
+            'log': {'val_loss': val_loss_mean.item()},
+            'val_loss': val_loss_mean.item(),
+        }
 
     def configure_optimizers(self):
         return AdamW(self.parameters(), lr=self.lr, correct_bias=True)
@@ -94,9 +95,7 @@ def analysis(args):
             max_id = torch.argmax(torch.sum(outputs.cross_attentions[1], 1).squeeze()).item()
 
             weights = torch.sum(outputs.cross_attentions[1], 1).squeeze().cpu().tolist()
-            bukets = []
-            for i in range(len(tokens)):
-                bukets.append((tokens[i], weights[i]))
+            bukets = [(tokens[i], weights[i]) for i in range(len(tokens))]
             # bukets.sort(key=lambda x: x[1])
             print(bukets[max(max_id-1,0)])
             print(bukets[max_id])

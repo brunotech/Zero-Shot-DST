@@ -21,7 +21,7 @@ def greedy_decode(input_text, tokenizer, model, args, max_length, current_output
 
     input_ids = tokenizer.encode(input_text, add_special_tokens=False)
     with torch.no_grad():
-        for i in range(max_length):
+        for _ in range(max_length):
             input_tensor = torch.tensor(input_ids+current_output, device=torch.device("cuda:0")).unsqueeze(0)
             logits = model(input_tensor)
             if isinstance(logits, tuple):  # for gpt2 and maybe others
@@ -32,8 +32,7 @@ def greedy_decode(input_text, tokenizer, model, args, max_length, current_output
                 break
             current_output.append(predicted_index)
 
-    output_text = tokenizer.decode(current_output)
-    return output_text
+    return tokenizer.decode(current_output)
 
 
 
@@ -63,11 +62,12 @@ class DST_GPT(pl.LightningModule):
         # return result
 
     def validation_epoch_end(self, outputs):
-        val_loss_mean = sum([o['val_loss'] for o in outputs]) / len(outputs)
-        # show val_loss in progress bar but only log val_loss
-        results = {'progress_bar': {'val_loss': val_loss_mean.item()}, 'log': {'val_loss': val_loss_mean.item()},
-                   'val_loss': val_loss_mean.item()}
-        return results
+        val_loss_mean = sum(o['val_loss'] for o in outputs) / len(outputs)
+        return {
+            'progress_bar': {'val_loss': val_loss_mean.item()},
+            'log': {'val_loss': val_loss_mean.item()},
+            'val_loss': val_loss_mean.item(),
+        }
 
 
     def configure_optimizers(self):
@@ -137,32 +137,30 @@ def evaluate_model(args, tokenizer, model, test_loader, save_path, ALL_SLOTS, pr
             dial_id = batch["ID"][idx]
 
             if dial_id not in predictions:
-                predictions[dial_id] = {}
-                predictions[dial_id]["domain"] = batch["domains"][idx][0]
-                predictions[dial_id]["turns"] = {}
+                predictions[dial_id] = {"domain": batch["domains"][idx][0], "turns": {}}
             if batch["turn_id"][idx] not in predictions[dial_id]["turns"]:
                 predictions[dial_id]["turns"][batch["turn_id"][idx]] = {"turn_belief":batch["turn_belief"][idx], "pred_belief":[]}
 
             if value!="none":
                 predictions[dial_id]["turns"][batch["turn_id"][idx]]["pred_belief"].append(str(batch["slot_text"][idx])+'-'+str(value))
 
-            # dst_text = greedy_decode(input_text, tokenizer, model, args, max_length=200)
-            # slot_values = dst_text.strip()
-            # dial_id = batch["ID"][idx]
+                    # dst_text = greedy_decode(input_text, tokenizer, model, args, max_length=200)
+                    # slot_values = dst_text.strip()
+                    # dial_id = batch["ID"][idx]
 
-            # if dial_id not in predictions:
-            #     predictions[dial_id] = {}
-            #     predictions[dial_id]["domain"] = batch["domains"][idx][0]
-            #     predictions[dial_id]["turns"] = {}
-            # if batch["turn_id"][idx] not in predictions[dial_id]["turns"]:
-            #     predictions[dial_id]["turns"][batch["turn_id"][idx]] = {"turn_belief":batch["turn_belief"][idx], "pred_belief":[]}
-            # # print(slot_values)
-            # # print(slot_values.split(", "))
-            # for slot_value in slot_values.split(", "):
-            #     value = slot_value.split("-")[-1]
-            #     # print(value)
-            #     if value!="none":
-            #         predictions[dial_id]["turns"][batch["turn_id"][idx]]["pred_belief"].append(slot_value)
+                    # if dial_id not in predictions:
+                    #     predictions[dial_id] = {}
+                    #     predictions[dial_id]["domain"] = batch["domains"][idx][0]
+                    #     predictions[dial_id]["turns"] = {}
+                    # if batch["turn_id"][idx] not in predictions[dial_id]["turns"]:
+                    #     predictions[dial_id]["turns"][batch["turn_id"][idx]] = {"turn_belief":batch["turn_belief"][idx], "pred_belief":[]}
+                    # # print(slot_values)
+                    # # print(slot_values.split(", "))
+                    # for slot_value in slot_values.split(", "):
+                    #     value = slot_value.split("-")[-1]
+                    #     # print(value)
+                    #     if value!="none":
+                    #         predictions[dial_id]["turns"][batch["turn_id"][idx]]["pred_belief"].append(slot_value)
 
 
     with open(os.path.join(save_path, f"{prefix}_prediction.json"), 'w') as f:

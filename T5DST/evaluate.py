@@ -12,10 +12,9 @@ def compute_acc(gold, pred, slot_temp):
         if g not in pred:
             miss_gold += 1
             miss_slot.append(g.rsplit("-", 1)[0])
-    wrong_pred = 0
-    for p in pred:
-        if p not in gold and p.rsplit("-", 1)[0] not in miss_slot:
-            wrong_pred += 1
+    wrong_pred = sum(
+        p not in gold and p.rsplit("-", 1)[0] not in miss_slot for p in pred
+    )
     ACC_TOTAL = len(slot_temp)
     ACC = len(slot_temp) - miss_gold - wrong_pred
     ACC = ACC / float(ACC_TOTAL)
@@ -37,10 +36,7 @@ def compute_prf(gold, pred):
         recall = TP / float(TP+FN) if (TP+FN)!=0 else 0
         F1 = 2 * precision * recall / float(precision + recall) if (precision+recall)!=0 else 0
     else:
-        if len(pred)==0:
-            precision, recall, F1, count = 1, 1, 1, 1
-        else:
-            precision, recall, F1, count = 0, 0, 0, 1
+        precision, recall, F1, count = (1, 1, 1, 1) if len(pred)==0 else (0, 0, 0, 1)
     return F1, recall, precision, count
 
 def evaluate_metrics(all_prediction, SLOT_LIST):
@@ -71,8 +67,10 @@ def evaluate_metrics(all_prediction, SLOT_LIST):
 
 def get_slot_information(ontology):
     ontology_domains = dict([(k, v) for k, v in ontology.items() if k.split("-")[0] in EXPERIMENT_DOMAINS])
-    SLOTS = [k.replace(" ","").lower() if ("book" not in k) else k.lower() for k in ontology_domains.keys()]
-    return SLOTS
+    return [
+        k.replace(" ", "").lower() if ("book" not in k) else k.lower()
+        for k in ontology_domains
+    ]
 
 if __name__ == "__main__":
     ontology = json.load(open("data/multi-woz/MULTIWOZ2 2/ontology.json", 'r'))
